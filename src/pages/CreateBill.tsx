@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, ArrowLeft, RotateCcw } from 'lucide-react';
 import { SiteHeader } from '../components/SiteHeader';
@@ -37,7 +38,7 @@ export const CreateBill: React.FC = () => {
   const [items, setItems] = useState<BillItem[]>(
     existingBill?.items || [
       {
-        id: `item-${Date.now()}-1`,
+        id: 'initial-item',
         description: '',
         weight: 0,
         rate: 0,
@@ -48,13 +49,17 @@ export const CreateBill: React.FC = () => {
   const [discount, setDiscount] = useState<number>(existingBill?.discount || 0);
   const [errors, setErrors] = useState<BillFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Initialize next bill number if not editing
   useEffect(() => {
     if (!existingBill && !billNumber) {
-      billService.getNextBillNumber().then((nextNo) => {
-        setBillNumber(nextNo);
-      });
+      billService.getNextBillNumber()
+        .then(setBillNumber)
+        .catch((error: unknown) => {
+          console.error('Could not load next bill number:', error);
+          setSaveError(error instanceof Error ? error.message : 'Could not load the next bill number.');
+        });
     }
   }, [existingBill, billNumber]);
 
@@ -96,7 +101,7 @@ export const CreateBill: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const validation = validateBillForm({
@@ -117,6 +122,10 @@ export const CreateBill: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setSaveError('');
+    const photoToSave = existingBill && jewelleryPhoto === existingBill.jewelleryPhoto
+      ? existingBill.jewelleryPhotoPath
+      : jewelleryPhoto;
 
     try {
       let savedBill: Bill;
@@ -129,13 +138,14 @@ export const CreateBill: React.FC = () => {
           mobile,
           address,
           billDate,
-          jewelleryPhoto,
+          jewelleryPhoto: photoToSave,
           items,
           subtotal,
           discount,
           finalTotal,
         });
-        savedBill = updated!;
+        if (!updated) throw new Error('This bill no longer exists or you do not have permission to update it.');
+        savedBill = updated;
       } else {
         // Create new bill
         savedBill = await billService.createBill({
@@ -145,7 +155,7 @@ export const CreateBill: React.FC = () => {
           mobile,
           address,
           billDate,
-          jewelleryPhoto,
+          jewelleryPhoto: photoToSave,
           items,
           subtotal,
           discount,
@@ -158,7 +168,7 @@ export const CreateBill: React.FC = () => {
       navigate(`/preview?id=${savedBill.id}`, { state: { bill: savedBill } });
     } catch (err) {
       console.error('Error saving bill:', err);
-      alert('Could not save bill. Please try again.');
+      setSaveError(err instanceof Error ? err.message : 'Could not save the bill. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -204,6 +214,11 @@ export const CreateBill: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {saveError && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {saveError}
+            </div>
+          )}
           {/* Section 1: Customer Details */}
           <CustomerDetailsForm
             customerName={customerName}

@@ -20,6 +20,7 @@ export const InvoicePreview: React.FC = () => {
     (location.state?.bill as Bill) || null
   );
   const [loading, setLoading] = useState(!bill);
+  const [loadError, setLoadError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
 
@@ -27,24 +28,29 @@ export const InvoicePreview: React.FC = () => {
 
   useEffect(() => {
     if (!bill) {
+      let active = true;
       const fetchBill = async () => {
         setLoading(true);
-        if (billIdParam) {
-          const found = await billService.getBill(billIdParam);
-          if (found) {
-            setBill(found);
-            setLoading(false);
-            return;
+        setLoadError('');
+        try {
+          if (billIdParam) {
+            const found = await billService.getBill(billIdParam);
+            if (found) {
+              if (active) setBill(found);
+              return;
+            }
           }
+          const allBills = await billService.getBills();
+          if (active && allBills.length > 0) setBill(allBills[0]);
+        } catch (error) {
+          console.error('Could not load invoice:', error);
+          if (active) setLoadError(error instanceof Error ? error.message : 'Could not load this invoice.');
+        } finally {
+          if (active) setLoading(false);
         }
-        // Fallback to most recent bill
-        const allBills = await billService.getBills();
-        if (allBills.length > 0) {
-          setBill(allBills[0]);
-        }
-        setLoading(false);
       };
-      fetchBill();
+      void fetchBill();
+      return () => { active = false; };
     }
   }, [bill, billIdParam]);
 
@@ -105,6 +111,7 @@ export const InvoicePreview: React.FC = () => {
       // 3. Draw Customer Jewellery Photo inside Ornament Details Box
       if (bill.jewelleryPhoto) {
         const photoImg = new Image();
+        photoImg.crossOrigin = 'anonymous';
         await new Promise((resolve) => {
           photoImg.onload = resolve;
           photoImg.onerror = resolve;
@@ -271,7 +278,9 @@ export const InvoicePreview: React.FC = () => {
         <SiteHeader />
         <div className="flex-1 max-w-xl mx-auto px-4 py-12 text-center space-y-4">
           <h2 className="font-playfair text-2xl font-bold text-[#06231a]">Invoice Not Found</h2>
-          <p className="text-sm text-gray-600">No bill data is currently available to preview.</p>
+          <p role={loadError ? 'alert' : undefined} className="text-sm text-gray-600">
+            {loadError || 'No bill data is currently available to preview.'}
+          </p>
           <button
             onClick={() => navigate('/create-bill')}
             className="px-6 py-3 rounded-xl bg-[#06231a] text-white font-semibold text-sm hover:bg-[#0b3e2f] transition-all"

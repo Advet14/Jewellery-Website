@@ -1,13 +1,15 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { X, FilePlus, ReceiptText, ShieldCheck, MapPin, Home } from 'lucide-react';
+import { LogOut, X, FilePlus, ReceiptText, ShieldCheck, MapPin, Home } from 'lucide-react';
 
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
+  authenticated: boolean;
+  onLogout: () => void;
 }
 
-export const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
+export const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose, authenticated, onLogout }) => {
   if (!isOpen) return null;
 
   const navLinks = [
@@ -67,6 +69,16 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
                 </NavLink>
               );
             })}
+            {authenticated && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="flex items-center space-x-3 px-4 py-3.5 rounded-xl text-base font-medium text-[#e5dfd3] hover:bg-[#0d382b] hover:text-[#d4af37] transition-all"
+              >
+                <LogOut className="w-5 h-5 shrink-0" />
+                <span>Sign out</span>
+              </button>
+            )}
           </nav>
         </div>
 

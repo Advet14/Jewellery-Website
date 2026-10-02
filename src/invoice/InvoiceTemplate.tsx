@@ -1,9 +1,20 @@
 import React, { forwardRef, useEffect, useState, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import type { Bill } from '../types/bill';
 import { INVOICE_CANVAS, INVOICE_COORDINATES } from './invoiceCoordinates';
 import invoiceMasterImg from '../assets/invoice-master.png';
 import { generateQrDataUrl } from '../utils/qr';
 import { formatINR } from '../utils/calculations';
+
+// true  = text fields ke peeche white background, taaki master image ki dotted lines chhup jaayein
+// false = background transparent (agar mask se design kat raha ho)
+const MASK_BACKGROUND_DOTS = true;
+
+const FONT = "'Plus Jakarta Sans', sans-serif";
+
+const maskStyle: CSSProperties = MASK_BACKGROUND_DOTS
+  ? { backgroundColor: '#ffffff' }
+  : {};
 
 interface InvoiceTemplateProps {
   bill: Bill;
@@ -17,20 +28,24 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
     const [scale, setScale] = useState<number>(1);
     const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
-    // Generate dynamic QR code if verificationId is present
+    // Generate dynamic QR code when verification ID is available
     useEffect(() => {
       let isMounted = true;
+
       if (bill.verificationId) {
         generateQrDataUrl(bill.verificationId).then((url) => {
           if (isMounted) setQrDataUrl(url);
         });
+      } else {
+        setQrDataUrl('');
       }
+
       return () => {
         isMounted = false;
       };
     }, [bill.verificationId]);
 
-    // Proportional auto-scaling for mobile & responsive screens
+    // Responsive scaling
     useEffect(() => {
       if (scaleMode !== 'fit-container') return;
 
@@ -38,9 +53,7 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
         if (!containerRef.current) return;
         const availableWidth = containerRef.current.clientWidth;
         if (availableWidth > 0) {
-          // Scale to fit container width, max 1.0 (never artificially enlarge beyond native 1045px)
-          const newScale = Math.min(1, availableWidth / INVOICE_CANVAS.width);
-          setScale(newScale);
+          setScale(Math.min(1, availableWidth / INVOICE_CANVAS.width));
         }
       };
 
@@ -49,7 +62,7 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
       return () => window.removeEventListener('resize', updateScale);
     }, [scaleMode]);
 
-    // Format date for Indian invoice display (DD/MM/YYYY)
+    // Format date as DD/MM/YYYY
     const formattedDate = (() => {
       if (!bill.billDate) return '';
       try {
@@ -63,26 +76,78 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
       }
     })();
 
+    // Single-line text field: hard clip, never "..."
+    const textField = (
+      c: { left: number; top: number; width: number; height: number; fontSize: number },
+      fontWeight: number,
+      extra: CSSProperties = {}
+    ): CSSProperties => ({
+      position: 'absolute',
+      left: `${c.left}px`,
+      top: `${c.top}px`,
+      width: `${c.width}px`,
+      height: `${c.height}px`,
+      fontSize: `${c.fontSize}px`,
+      lineHeight: '1.2',
+      color: '#111827',
+      fontWeight,
+      fontFamily: FONT,
+      display: 'flex',
+      alignItems: 'center',
+      overflow: 'hidden',
+      whiteSpace: 'nowrap',
+      textOverflow: 'clip',
+      letterSpacing: '0',
+      ...maskStyle,
+      ...extra,
+    });
+
+    // Table cell base style
+    const cellStyle = (
+      left: number,
+      width: number,
+      rowTop: number,
+      rowHeight: number,
+      extra: CSSProperties = {}
+    ): CSSProperties => ({
+      position: 'absolute',
+      left: `${left}px`,
+      top: `${rowTop}px`,
+      width: `${width}px`,
+      height: `${rowHeight}px`,
+      display: 'flex',
+      alignItems: 'center',
+      fontSize: '20px',
+      fontWeight: 600,
+      color: '#111827',
+      fontFamily: FONT,
+      lineHeight: '1.2',
+      ...extra,
+    });
+
     return (
       <div
         ref={containerRef}
         className={`w-full flex justify-center overflow-hidden ${className}`}
         style={{
-          // Reserve correct responsive height when scaled
-          height: scaleMode === 'fit-container' ? `${INVOICE_CANVAS.height * scale}px` : undefined,
+          height:
+            scaleMode === 'fit-container'
+              ? `${INVOICE_CANVAS.height * scale}px`
+              : undefined,
         }}
       >
-        {/* Scaled Wrapper */}
+        {/* Scaled invoice wrapper */}
         <div
           style={{
             width: `${INVOICE_CANVAS.width}px`,
             height: `${INVOICE_CANVAS.height}px`,
-            transform: scaleMode === 'fit-container' ? `scale(${scale})` : undefined,
+            transform:
+              scaleMode === 'fit-container' ? `scale(${scale})` : undefined,
             transformOrigin: 'top center',
           }}
           className="shrink-0"
         >
-          {/* Exact Master Canvas */}
+          {/* Exact invoice canvas */}
           <div
             id="printable-invoice-canvas"
             ref={ref}
@@ -93,15 +158,18 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
               backgroundColor: '#ffffff',
             }}
           >
-            {/* 1. MASTER INVOICE BACKGROUND IMAGE */}
+            {/* 1. MASTER INVOICE BACKGROUND */}
             <img
               src={invoiceMasterImg}
               alt="Jay Ambe Jewellers Invoice Master Template"
               className="absolute inset-0 w-full h-full pointer-events-none"
-              style={{ width: `${INVOICE_CANVAS.width}px`, height: `${INVOICE_CANVAS.height}px` }}
+              style={{
+                width: `${INVOICE_CANVAS.width}px`,
+                height: `${INVOICE_CANVAS.height}px`,
+              }}
             />
 
-            {/* 2. DYNAMIC QR CODE OVERLAY (QR IMAGE ONLY - NO TEXT, NO CAPTION) */}
+            {/* 2. QR CODE */}
             {qrDataUrl && (
               <div
                 style={{
@@ -130,53 +198,24 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
               </div>
             )}
 
-            {/* 3. DYNAMIC CUSTOMER NAME */}
+            {/* 3. CUSTOMER NAME */}
             <div
-              style={{
-                position: 'absolute',
-                left: `${INVOICE_COORDINATES.customerName.left}px`,
-                top: `${INVOICE_COORDINATES.customerName.top}px`,
-                width: `${INVOICE_COORDINATES.customerName.width}px`,
-                height: `${INVOICE_COORDINATES.customerName.height}px`,
-                fontSize: `${INVOICE_COORDINATES.customerName.fontSize}px`,
-                lineHeight: '1.2',
-                color: '#111827',
-                fontWeight: 600,
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                display: 'flex',
-                alignItems: 'center',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
-              }}
+              style={textField(INVOICE_COORDINATES.customerName, 600)}
+              title={bill.customerName}
             >
               {bill.customerName}
             </div>
 
-            {/* 4. DYNAMIC CUSTOMER MOBILE */}
+            {/* 4. CUSTOMER MOBILE */}
             <div
-              style={{
-                position: 'absolute',
-                left: `${INVOICE_COORDINATES.customerMobile.left}px`,
-                top: `${INVOICE_COORDINATES.customerMobile.top}px`,
-                width: `${INVOICE_COORDINATES.customerMobile.width}px`,
-                height: `${INVOICE_COORDINATES.customerMobile.height}px`,
-                fontSize: `${INVOICE_COORDINATES.customerMobile.fontSize}px`,
-                lineHeight: '1.2',
-                color: '#111827',
-                fontWeight: 600,
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                display: 'flex',
-                alignItems: 'center',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
+              style={textField(INVOICE_COORDINATES.customerMobile, 600, {
                 letterSpacing: '0.5px',
-              }}
+              })}
             >
               {bill.mobile}
             </div>
 
-            {/* 5. DYNAMIC CUSTOMER ADDRESS */}
+            {/* 5. CUSTOMER ADDRESS (no line-clamp, no ellipsis) */}
             <div
               style={{
                 position: 'absolute',
@@ -188,59 +227,28 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
                 lineHeight: '1.25',
                 color: '#111827',
                 fontWeight: 500,
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                display: 'flex',
-                alignItems: 'flex-start',
+                fontFamily: FONT,
                 overflow: 'hidden',
+                textOverflow: 'clip',
                 wordBreak: 'break-word',
+                ...maskStyle,
               }}
+              title={bill.address}
             >
-              <span className="line-clamp-2">{bill.address}</span>
+              {bill.address}
             </div>
 
-            {/* 6. DYNAMIC BILL NUMBER */}
-            <div
-              style={{
-                position: 'absolute',
-                left: `${INVOICE_COORDINATES.billNumber.left}px`,
-                top: `${INVOICE_COORDINATES.billNumber.top}px`,
-                width: `${INVOICE_COORDINATES.billNumber.width}px`,
-                height: `${INVOICE_COORDINATES.billNumber.height}px`,
-                fontSize: `${INVOICE_COORDINATES.billNumber.fontSize}px`,
-                lineHeight: '1.2',
-                color: '#111827',
-                fontWeight: 700,
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                display: 'flex',
-                alignItems: 'center',
-                overflow: 'hidden',
-              }}
-            >
+            {/* 6. BILL NUMBER */}
+            <div style={textField(INVOICE_COORDINATES.billNumber, 700)}>
               {bill.billNumber}
             </div>
 
-            {/* 7. DYNAMIC DATE */}
-            <div
-              style={{
-                position: 'absolute',
-                left: `${INVOICE_COORDINATES.billDate.left}px`,
-                top: `${INVOICE_COORDINATES.billDate.top}px`,
-                width: `${INVOICE_COORDINATES.billDate.width}px`,
-                height: `${INVOICE_COORDINATES.billDate.height}px`,
-                fontSize: `${INVOICE_COORDINATES.billDate.fontSize}px`,
-                lineHeight: '1.2',
-                color: '#111827',
-                fontWeight: 600,
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                display: 'flex',
-                alignItems: 'center',
-                overflow: 'hidden',
-              }}
-            >
+            {/* 7. DATE */}
+            <div style={textField(INVOICE_COORDINATES.billDate, 600)}>
               {formattedDate}
             </div>
 
-            {/* 8. JEWELLERY PHOTO INSIDE EXISTING ORNAMENT DETAILS BOX ONLY */}
+            {/* 8. JEWELLERY PHOTO */}
             {bill.jewelleryPhoto && (
               <div
                 style={{
@@ -264,121 +272,101 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
                     maxWidth: '100%',
                     maxHeight: '100%',
                     objectFit: 'contain',
+                    display: 'block',
                   }}
                 />
               </div>
             )}
 
-            {/* 9. DYNAMIC JEWELLERY ITEMS TABLE ROWS */}
+            {/* 9. JEWELLERY ITEMS */}
             {bill.items.map((item, index) => {
               const rowCoord = INVOICE_COORDINATES.tableRows[index];
-              if (!rowCoord) return null; // Supported up to available rows
+              if (!rowCoord) return null;
+
+              const cols = INVOICE_COORDINATES.tableColumns;
 
               return (
                 <React.Fragment key={item.id || index}>
                   {/* Sr. No. */}
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: `${INVOICE_COORDINATES.tableColumns.srNo.left}px`,
-                      top: `${rowCoord.top}px`,
-                      width: `${INVOICE_COORDINATES.tableColumns.srNo.width}px`,
-                      height: `${rowCoord.height}px`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '20px',
-                      fontWeight: 600,
-                      color: '#111827',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
+                    style={cellStyle(
+                      cols.srNo.left,
+                      cols.srNo.width,
+                      rowCoord.top,
+                      rowCoord.height,
+                      { justifyContent: 'center' }
+                    )}
                   >
                     {index + 1}
                   </div>
 
-                  {/* Description */}
+                  {/* Description (hard clip, no "...") */}
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: `${INVOICE_COORDINATES.tableColumns.description.left}px`,
-                      top: `${rowCoord.top}px`,
-                      width: `${INVOICE_COORDINATES.tableColumns.description.width}px`,
-                      height: `${rowCoord.height}px`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      paddingLeft: `${INVOICE_COORDINATES.tableColumns.description.paddingLeft}px`,
-                      paddingRight: '10px',
-                      fontSize: '20px',
-                      fontWeight: 600,
-                      color: '#111827',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
-                    }}
+                    style={cellStyle(
+                      cols.description.left,
+                      cols.description.width,
+                      rowCoord.top,
+                      rowCoord.height,
+                      {
+                        paddingLeft: `${cols.description.paddingLeft}px`,
+                        paddingRight: '10px',
+                        fontSize: '18px',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'clip',
+                        letterSpacing: '0',
+                      }
+                    )}
+                    title={item.description}
                   >
                     {item.description}
                   </div>
 
                   {/* Weight */}
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: `${INVOICE_COORDINATES.tableColumns.weight.left}px`,
-                      top: `${rowCoord.top}px`,
-                      width: `${INVOICE_COORDINATES.tableColumns.weight.width}px`,
-                      height: `${rowCoord.height}px`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      paddingRight: `${INVOICE_COORDINATES.tableColumns.weight.paddingRight}px`,
-                      fontSize: '20px',
-                      fontWeight: 600,
-                      color: '#111827',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
+                    style={cellStyle(
+                      cols.weight.left,
+                      cols.weight.width,
+                      rowCoord.top,
+                      rowCoord.height,
+                      {
+                        justifyContent: 'flex-end',
+                        paddingRight: `${cols.weight.paddingRight}px`,
+                      }
+                    )}
                   >
                     {item.weight > 0 ? `${item.weight.toFixed(2)} g` : ''}
                   </div>
 
                   {/* Rate */}
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: `${INVOICE_COORDINATES.tableColumns.rate.left}px`,
-                      top: `${rowCoord.top}px`,
-                      width: `${INVOICE_COORDINATES.tableColumns.rate.width}px`,
-                      height: `${rowCoord.height}px`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      paddingRight: `${INVOICE_COORDINATES.tableColumns.rate.paddingRight}px`,
-                      fontSize: '20px',
-                      fontWeight: 600,
-                      color: '#111827',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
+                    style={cellStyle(
+                      cols.rate.left,
+                      cols.rate.width,
+                      rowCoord.top,
+                      rowCoord.height,
+                      {
+                        justifyContent: 'flex-end',
+                        paddingRight: `${cols.rate.paddingRight}px`,
+                      }
+                    )}
                   >
                     {item.rate > 0 ? formatINR(item.rate, false) : ''}
                   </div>
 
                   {/* Amount */}
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: `${INVOICE_COORDINATES.tableColumns.amount.left}px`,
-                      top: `${rowCoord.top}px`,
-                      width: `${INVOICE_COORDINATES.tableColumns.amount.width}px`,
-                      height: `${rowCoord.height}px`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      paddingRight: `${INVOICE_COORDINATES.tableColumns.amount.paddingRight}px`,
-                      fontSize: '20px',
-                      fontWeight: 700,
-                      color: '#111827',
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                    }}
+                    style={cellStyle(
+                      cols.amount.left,
+                      cols.amount.width,
+                      rowCoord.top,
+                      rowCoord.height,
+                      {
+                        justifyContent: 'flex-end',
+                        paddingRight: `${cols.amount.paddingRight}px`,
+                        fontWeight: 700,
+                      }
+                    )}
                   >
                     {item.amount > 0 ? formatINR(item.amount, false) : ''}
                   </div>
@@ -386,7 +374,7 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
               );
             })}
 
-            {/* 10. FINAL TOTAL AMOUNT OVERLAY */}
+            {/* 10. FINAL TOTAL */}
             <div
               style={{
                 position: 'absolute',
@@ -401,7 +389,11 @@ export const InvoiceTemplate = forwardRef<HTMLDivElement, InvoiceTemplateProps>(
                 fontSize: `${INVOICE_COORDINATES.totalAmount.fontSize}px`,
                 fontWeight: 800,
                 color: '#06231a',
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                fontFamily: FONT,
+                lineHeight: '1.2',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'clip',
               }}
             >
               {formatINR(bill.finalTotal, false)}

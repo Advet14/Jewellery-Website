@@ -50,7 +50,7 @@ export const JewelleryItemsEditor: React.FC<JewelleryItemsEditorProps> = ({
       // Keep at least one empty item instead of 0 items
       onChange([
         {
-          id: `item-${Date.now()}`,
+          id: 'empty-item',
           description: '',
           weight: 0,
           rate: 0,

@@ -1,10 +1,46 @@
-import React, { useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
-import { Menu, Plus } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { LogOut, Menu, Plus } from 'lucide-react';
 import { MobileMenu } from './MobileMenu';
+import { supabase } from '../lib/supabase';
+import { logout } from '../services/authService';
 
 export const SiteHeader: React.FC = () => {
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (active) setAuthenticated(Boolean(data.session));
+      })
+      .catch((error: unknown) => {
+        console.error('Could not read authentication session:', error);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthenticated(Boolean(session));
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setMobileMenuOpen(false);
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Could not sign out:', error);
+      window.alert(error instanceof Error ? error.message : 'Could not sign out. Please try again.');
+    }
+  };
 
   return (
     <>
@@ -102,12 +138,28 @@ export const SiteHeader: React.FC = () => {
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>New Bill</span>
             </Link>
+            {authenticated && (
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                aria-label="Sign out"
+                title="Sign out"
+                className="ml-2 inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#e6e0d2] hover:bg-[#0a3528] hover:text-[#d4af37] transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
           </nav>
         </div>
       </header>
 
       {/* Mobile Drawer */}
-      <MobileMenu isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+      <MobileMenu
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        authenticated={authenticated}
+        onLogout={handleLogout}
+      />
     </>
   );
 };

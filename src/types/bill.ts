@@ -16,7 +16,8 @@ export interface Bill {
   mobile: string;
   address: string;
   billDate: string; // YYYY-MM-DD
-  jewelleryPhoto?: string; // base64 data URL or asset URL
+  jewelleryPhoto?: string; // Temporary signed URL or data URL used by the UI
+  jewelleryPhotoPath?: string; // Private Supabase Storage path stored in the database
   items: BillItem[];
   subtotal: number;
   discount: number; // discount amount in INR

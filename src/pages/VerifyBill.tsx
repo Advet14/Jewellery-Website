@@ -1,57 +1,47 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Search, QrCode, CheckCircle2, XCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { ShieldCheck, Search, QrCode, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { SiteHeader } from '../components/SiteHeader';
-import type { Bill } from '../types/bill';
 import { billService } from '../services/billService';
-import { formatINR } from '../utils/calculations';
+import type { BillVerification } from '../services/billService';
 
 export const VerifyBill: React.FC = () => {
-  const navigate = useNavigate();
-  const [verificationInput, setVerificationInput] = useState('');
+  const { verificationId } = useParams();
+  const [verificationInput, setVerificationInput] = useState(verificationId ?? '');
   const [result, setResult] = useState<{
     searched: boolean;
     status: 'VALID' | 'NOT_FOUND' | 'CANCELLED' | 'REPORTED_STOLEN';
-    bill?: Bill;
+    bill?: BillVerification;
   } | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [error, setError] = useState('');
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!verificationInput.trim()) return;
 
     setIsVerifying(true);
+    setError('');
     const cleaned = verificationInput.trim();
 
-    // Check with service
-    const found = await billService.getBill(cleaned);
-
-    if (!found) {
-      setResult({
-        searched: true,
-        status: 'NOT_FOUND',
-      });
-    } else if (found.status === 'CANCELLED') {
-      setResult({
-        searched: true,
-        status: 'CANCELLED',
-        bill: found,
-      });
-    } else if (found.status === 'REPORTED_STOLEN') {
-      setResult({
-        searched: true,
-        status: 'REPORTED_STOLEN',
-        bill: found,
-      });
-    } else {
-      setResult({
-        searched: true,
-        status: 'VALID',
-        bill: found,
-      });
+    try {
+      const found = await billService.verifyBill(cleaned);
+      if (!found) {
+        setResult({ searched: true, status: 'NOT_FOUND' });
+      } else {
+        setResult({
+          searched: true,
+          status: found.status === 'ACTIVE' ? 'VALID' : found.status,
+          bill: found,
+        });
+      }
+    } catch (verifyError) {
+      console.error('Bill verification failed:', verifyError);
+      setError(verifyError instanceof Error ? verifyError.message : 'Could not verify this bill. Please try again.');
+      setResult(null);
+    } finally {
+      setIsVerifying(false);
     }
-
-    setIsVerifying(false);
   };
 
   return (
@@ -71,7 +61,7 @@ export const VerifyBill: React.FC = () => {
             Verify Bill Authenticity
           </h1>
           <p className="text-xs text-gray-600 max-w-md mx-auto">
-            Enter the unique Verification ID printed on the official Jay Ambe Jewellers invoice to verify its authenticity.
+              Enter the unique Verification ID printed on the official Jay Ambe Jewellers invoice to verify its authenticity.
           </p>
         </div>
 
@@ -82,7 +72,7 @@ export const VerifyBill: React.FC = () => {
               htmlFor="verificationId"
               className="block text-xs uppercase tracking-wider font-semibold text-gray-700 mb-1.5"
             >
-              Verification ID or Bill No.
+              Verification ID
             </label>
             <div className="relative">
               <input
@@ -90,7 +80,7 @@ export const VerifyBill: React.FC = () => {
                 type="text"
                 value={verificationInput}
                 onChange={(e) => setVerificationInput(e.target.value)}
-                placeholder="e.g. JAJ-VFY-8F72KQ91M4 or 1001"
+                placeholder="e.g. JAJ-VFY-8F72KQ91M4"
                 className="w-full min-h-[46px] pl-10 pr-4 py-2.5 rounded-xl border border-[#d8ccb6] focus:border-[#c59b27] focus:ring-2 focus:ring-[#c59b27]/20 text-sm font-mono tracking-wide"
               />
               <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -106,6 +96,12 @@ export const VerifyBill: React.FC = () => {
             <span>{isVerifying ? 'Verifying...' : 'Verify Now'}</span>
           </button>
         </form>
+
+        {error && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            {error}
+          </div>
+        )}
 
         {/* Future QR Scanner Camera Zone (Prepared Area) */}
         <div className="p-4 rounded-2xl border border-dashed border-[#c59b27]/50 bg-[#fdfbf7] flex items-center justify-between text-xs text-gray-600">
@@ -149,24 +145,7 @@ export const VerifyBill: React.FC = () => {
                     <span className="text-gray-500 block text-[11px]">Bill Date</span>
                     <strong className="text-[#06231a]">{result.bill.billDate}</strong>
                   </div>
-                  <div>
-                    <span className="text-gray-500 block text-[11px]">Customer Name</span>
-                    <strong className="text-[#06231a]">{result.bill.customerName}</strong>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block text-[11px]">Total Amount</span>
-                    <strong className="text-emerald-700 font-bold">{formatINR(result.bill.finalTotal)}</strong>
-                  </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => navigate(`/preview?id=${result.bill?.id}`, { state: { bill: result.bill } })}
-                  className="w-full min-h-[44px] mt-2 inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-[#06231a] text-white text-xs font-semibold hover:bg-[#0b3e2f] transition-all"
-                >
-                  <span>View Official Invoice Preview</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-[#d4af37]" />
-                </button>
               </div>
             )}
 
@@ -200,7 +179,7 @@ export const VerifyBill: React.FC = () => {
                   </div>
                 </div>
                 <p className="text-xs text-gray-600">
-                  Bill #{result.bill.billNumber} for {result.bill.customerName} on {result.bill.billDate} was marked as cancelled.
+                  Bill #{result.bill.billNumber} on {result.bill.billDate} was marked as cancelled.
                 </p>
               </div>
             )}
@@ -221,7 +200,7 @@ export const VerifyBill: React.FC = () => {
                   </div>
                 </div>
                 <p className="text-xs text-red-700 font-medium">
-                  This jewellery item/bill #{result.bill.billNumber} has been officially flagged as reported stolen. Please contact Jay Ambe Jewellers or local authorities immediately.
+                  Bill #{result.bill.billNumber} dated {result.bill.billDate} has been flagged as reported stolen. Please contact Jay Ambe Jewellers or local authorities immediately.
                 </p>
               </div>
             )}

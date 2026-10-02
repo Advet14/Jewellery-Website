@@ -11,12 +11,22 @@ export const RecentBills: React.FC = () => {
   const [bills, setBills] = useState<Bill[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    billService.getBills().then((data) => {
-      setBills(data);
-      setLoading(false);
-    });
+    let active = true;
+    billService.getBills()
+      .then((data) => {
+        if (active) setBills(data);
+      })
+      .catch((loadError: unknown) => {
+        console.error('Could not load recent bills:', loadError);
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load recent bills.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   const filteredBills = bills.filter((b) => {
@@ -100,6 +110,10 @@ export const RecentBills: React.FC = () => {
           <div className="p-12 text-center text-gray-500 space-y-2">
             <div className="w-8 h-8 border-3 border-[#c59b27] border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-sm font-medium">Loading bills...</p>
+          </div>
+        ) : error ? (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            {error}
           </div>
         ) : filteredBills.length === 0 ? (
           <div className="p-12 text-center bg-white rounded-2xl border border-[#e5ded0] space-y-3">
